@@ -1,0 +1,3 @@
+node_modules/
+.cert/
+public/sonidos.json

@@ -212,4 +212,3 @@ Con 25 personas son unos 700 mensajes pequeños por segundo: sin problema para e
 | Algunos teléfonos no logran entrar | El hotspot llegó a su límite de dispositivos: usa un router. |
 | Un loop no aparece | Revisa que esté en `public/sonidos/` con una extensión de audio y recarga. Si el navegador no puede leer el formato, conviértelo a wav o mp3. |
 | Aparece alguien que ya se fue | Desaparece solo a los 25–35 s sin señales de su teléfono. |
-# Ondas-Colectivas
