@@ -9,7 +9,7 @@ Está construida sobre **Tacto** (broker MQTT, QR, el teléfono como control) y 
 | | **En línea** (GitHub Pages) | **Local** (`node server.js`) |
 |---|---|---|
 | Pantalla | `https://<usuario>.github.io/<repositorio>/pantalla.html` | `https://localhost:8443/pantalla` |
-| Teléfonos | Escanean el QR desde **cualquier red** (datos móviles, WiFi de la universidad…) | Escanean el QR en la **misma red** que el computador |
+| Teléfonos | Escanean el QR desde **cualquier red** (datos móviles, wifi local, entre otras redes) | Escanean el QR en la **misma red** que el computador |
 | Broker | El de `config.js` (EMQX) o el de respaldo | El del propio servidor |
 | Aviso de certificado | No | Sí, una vez por dispositivo |
 | Latencia de las líneas | ~250 ms | ~10 ms |
@@ -17,17 +17,6 @@ Está construida sobre **Tacto** (broker MQTT, QR, el teléfono como control) y 
 El sonido sale de cada teléfono en los dos modos, así que la latencia solo se nota en lo que tarda la línea en llegar a la pantalla.
 
 ---
-
-## Publicar en GitHub Pages
-
-1. Crea un repositorio en GitHub y sube **el contenido de esta carpeta** (la rama debe llamarse `main`). `node_modules/` y `.cert/` quedan fuera por `.gitignore`.
-2. En el repositorio: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Cada vez que subas cambios, la acción **Publicar en GitHub Pages** (`.github/workflows/pages.yml`) genera la lista de sonidos y publica `public/`. Su estado se ve en la pestaña **Actions**.
-4. Abre en el computador del proyector **`https://<usuario>.github.io/<repositorio>/pantalla.html`** (también funciona `…/pantalla/`). Muestra el QR; el teléfono entra a `https://<usuario>.github.io/<repositorio>/?sala=…`.
-
-Para agregar loops: súbelos a `public/sonidos/` en el repositorio y la publicación los suma sola.
-
-> **Licencias de los sonidos.** Al publicar, los loops quedan descargables por cualquiera. Si vienen de Freesound u otro banco, revisa su licencia: las **CC BY** exigen dar crédito (por ejemplo, en una sección "Créditos" de este README, con autor y enlace); las **CC0** no.
 
 ### El broker en línea (`public/config.js`)
 
@@ -37,13 +26,6 @@ window.TACTO_CONFIG = {
   username: '…', password: '…',
   respaldo: 'wss://broker.emqx.io:8084/mqtt',             // si EMQX rechaza el usuario, se usa este (público, sin cuenta)
 };
-```
-
-- La pantalla dice arriba qué broker está usando: *en línea · …emqxsl.com*, *en línea · broker.emqx.io (respaldo)* o *red local*. El QR lleva al teléfono al mismo broker que la pantalla.
-- **Si aparece "(respaldo)"**, tu EMQX rechazó el usuario o la contraseña. Revísalo en la consola de EMQX Cloud: **Access Control → Authentication** (que exista ese usuario con esa contraseña) y que el despliegue esté en estado *Running*. Mientras tanto la experiencia funciona igual por el broker público.
-- `config.js` es **público** en GitHub Pages: crea en EMQX un usuario solo para esto, con permiso limitado a `tacto/#` (Access Control → Authorization).
-- En el broker público, cualquiera que conozca el código de sala puede ver los datos (son solo números de sonido; no viaja audio ni nada personal). La sala es un código al azar; **Nueva sala** crea otro.
-- **Cuota:** en línea cada teléfono manda ~6 mediciones de su onda y hasta ~7 cambios de ajuste por segundo, con mensajes de unos 30–60 bytes. Con 25 personas son ~150 MB por hora entre entrada y salida: revisa la cuota mensual de tu plan de EMQX Cloud si lo usas seguido.
 
 ---
 
@@ -54,7 +36,7 @@ npm install        # solo la primera vez (si no está la carpeta node_modules)
 node server.js
 ```
 
-En el computador abre **`https://localhost:8443/pantalla`** (también sirve escribirlo sin `https://`: el servidor redirige solo).
+
 
 ---
 
@@ -207,7 +189,6 @@ Con 25 personas son unos 700 mensajes pequeños por segundo: sin problema para e
 | La pantalla no suena | Es lo normal: parte en silencio. Actívala en el panel (**B**) con **Activar sonido de la pantalla**. |
 | El giro no hace nada | No se aceptó el permiso de movimiento. En iPhone: cierra Safari por completo y vuelve a entrar. Mientras tanto, se puede arrastrar el dedo sobre la línea. |
 | La pantalla dice "(respaldo)" | Tu EMQX rechazó el usuario o la contraseña de `config.js`: revísalos en la consola de EMQX Cloud. Mientras tanto funciona por el broker público. |
-| La página no carga los sonidos o dice "no como archivo" | Se abrió como archivo (doble clic). Ábrela desde GitHub Pages o desde `node server.js`. |
 | En Pages faltan sonidos nuevos | Revisa en la pestaña **Actions** que la publicación terminó; recarga con la caché vacía. |
 | Algunos teléfonos no logran entrar | El hotspot llegó a su límite de dispositivos: usa un router. |
 | Un loop no aparece | Revisa que esté en `public/sonidos/` con una extensión de audio y recarga. Si el navegador no puede leer el formato, conviértelo a wav o mp3. |
