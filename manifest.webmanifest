@@ -1,0 +1,11 @@
+{
+  "name": "Ondas colectivas",
+  "short_name": "Ondas",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050605",
+  "theme_color": "#050605",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

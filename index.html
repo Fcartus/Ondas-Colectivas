@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#050605">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Ondas colectivas</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body { font-size: 16px; overscroll-behavior: none; user-select: none; -webkit-user-select: none; overflow: hidden; background: #050605; }
+  body { display: flex; flex-direction: column; gap: 10px; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  input { width: 100%; min-height: 48px; padding: 12px 14px; border-radius: var(--r-m); user-select: text; -webkit-user-select: text; font-size: 16px; }
+  button { border-radius: var(--r-m); font-weight: 600; }
+  #join { margin: auto 0; max-width: 460px; width: 100%; align-self: center; display: flex; flex-direction: column; gap: 12px; }
+  #join .note { color: var(--mut); font-size: 13px; line-height: 1.5; }
+  #join h1 span { color: #3ddc84; }
+  #app { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  #bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--mut); flex: none; }
+  #st { font-weight: 600; } #st.on { color: var(--ok); } #st.warn { color: var(--warn); }
+  #yo { min-height: 30px; padding: 2px 12px; border-radius: 999px; font-size: 13px; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #yo::after { content: " ✎"; color: var(--mut); }
+  #vista { position: relative; flex: 1; min-height: 30vh; border-radius: var(--r-l); border: 1px solid #22261f; overflow: hidden; background: #050605; touch-action: none; }
+  #mio { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #vistaTxt { position: absolute; left: 10px; right: 10px; bottom: 8px; text-align: center; color: var(--mut); font-size: 12px; pointer-events: none; }
+  #power { flex: none; min-height: 56px; font-size: 18px; letter-spacing: .08em; background: #10140f; border: 2px solid #3ddc84; color: #3ddc84; }
+  #power.on { background: #3ddc84; color: #04140a; }
+  .fila { display: flex; gap: 6px; overflow-x: auto; flex: none; scrollbar-width: none; padding-bottom: 2px; }
+  .fila::-webkit-scrollbar { display: none; }
+  .fila button { flex: none; min-height: 42px; padding: 8px 14px; font-size: 14px; background: var(--card); white-space: nowrap; }
+  .fila button[aria-pressed="true"] { background: #e8e8e1; color: #050605; border-color: #e8e8e1; }
+  .lbl { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mut); flex: none; margin-bottom: -4px; }
+  #ayuda { font-size: 13px; color: var(--fg); flex: none; min-height: 2.6em; line-height: 1.35; }
+  #medidores { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; flex: none; }
+  .med { display: grid; grid-template-columns: 1fr 52px; grid-template-rows: auto 6px; gap: 2px 6px; align-items: center; font-size: 11px; color: var(--mut); }
+  .med .barra { grid-column: 1 / 3; }
+  #medidores .med:only-child, #medidores .med:nth-child(odd):last-child { grid-column: 1 / 3; }
+  .med .barra { height: 6px; border-radius: 3px; background: #1a1d18; overflow: hidden; position: relative; }
+  .med .barra i { position: absolute; top: 0; bottom: 0; left: 0; background: #3ddc84; }
+  .med output { text-align: right; color: var(--fg); font: 12px var(--mono); }
+  .acciones { display: flex; gap: 6px; flex: none; }
+  .acciones button { flex: 1; min-height: 40px; font-size: 13px; }
+  .msg { font-size: 13px; color: var(--err); min-height: 0; }
+  @media (max-height: 640px) { #medidores { display: none; } #ayuda { min-height: 0; } }
+</style>
+</head>
+<body>
+  <div id="join" class="card">
+    <h1>ONDAS <span>colectivas</span></h1>
+    <label for="name">Tu nombre</label><input id="name" autocomplete="off" maxlength="24" placeholder="ej: ana">
+    <label for="sala">Sala (la muestra la pantalla)</label><input id="sala" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="24">
+    <button id="go" class="primary" style="min-height:48px">Entrar</button>
+    <div class="msg" id="err" role="alert"></div>
+    <div class="note">Elige un sonido, enciéndelo y gira el teléfono para transformarlo. Tu línea aparece en la pantalla grande.</div>
+  </div>
+
+  <div id="app" hidden>
+    <div id="bar"><span id="st" role="status" aria-live="polite">Conectando…</span><button id="yo" type="button" aria-label="Cambiar tu nombre">–</button></div>
+    <div id="vista" aria-label="Tu línea: la onda de tu sonido. Toca para dar un golpe; arrastra si tu teléfono no tiene sensor de giro."><canvas id="mio"></canvas><div id="vistaTxt"></div></div>
+    <button id="power" aria-pressed="false">ENCENDER</button>
+    <div class="lbl">Sonido</div>
+    <div class="fila" id="sonidos" role="group" aria-label="Sonido base"></div>
+    <div class="lbl">Modo · qué transforma el giro</div>
+    <div class="fila" id="modos" role="group" aria-label="Modo"></div>
+    <div id="ayuda" aria-live="polite"></div>
+    <div id="medidores"></div>
+    <div class="acciones"><button id="recal">Recalibrar posición</button><button id="reset">Sonido original</button></div>
+    <div class="msg" id="err2" role="alert"></div>
+  </div>
+
+<script src="config.js"></script>
+<script src="tacto.js"></script>
+<script src="ondas-comun.js"></script>
+<script src="ondas-audio.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const { PARAMS, MODOS, clamp } = Ondas;
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
+const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch {} return null; };
+const Q = new URLSearchParams(location.search);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const dev = Tacto.clean(Q.get('dev')) || ss('ondas.dev') || (ss('ondas.dev', Tacto.rand(6)), ss('ondas.dev')) || Tacto.rand(6);
+$('#name').value = Q.get('name') || ls('ondas.name') || '';
+$('#sala').value = Tacto.clean(Q.get('sala')) || '';
+
+let client = null, TOP = null, name = '', sala = '';
+let on = false, sonido = null, sonidos = [], modo = MODOS[0], P = Ondas.defaults(), base = { ...P }, sucio = true;
+const cuerda = new Ondas.Cuerda(dev);
+const pub = (t, o, op = {}) => client && client.connected && client.publish(t, JSON.stringify(o), op);
+
+// ============================ CONEXIÓN ============================
+let enLinea = false; // broker en línea: se manda menos seguido para no gastar la cuota del broker
+async function conectar() {
+  TOP = Ondas.temas(sala);
+  const status = online => ({ online, name, app: 'ondas' });
+  setInterval(() => pub(TOP.dev(dev, 'status'), status(true), { qos: 1, retain: true }), 8000); // latido
+  await Ondas.conectar({ clientId: 'ond-' + dev, will: { topic: TOP.dev(dev, 'status'), payload: JSON.stringify(status(false)), qos: 1, retain: true } }, (cl, broker) => {
+    client = cl; enLinea = !Ondas.esLocal(broker);
+    cl.on('connect', () => {
+      $('#st').textContent = enLinea ? '● en línea' : '● conectado'; $('#st').className = 'on'; $('#err2').textContent = '';
+      pub(TOP.dev(dev, 'status'), status(true), { qos: 1, retain: true }); sucio = true;
+    });
+    cl.on('reconnect', () => { $('#st').textContent = 'Reconectando…'; $('#st').className = 'warn'; });
+    cl.on('offline', () => { $('#st').textContent = 'Sin conexión'; $('#st').className = 'warn'; });
+    cl.on('error', e => { $('#err2').textContent = 'MQTT: ' + (e.message || e); });
+  });
+}
+
+// ============================ TU SONIDO (suena en este teléfono) ============================
+// El teléfono genera su propio sonido con el mismo motor que la pantalla, y lo analiza para dibujar su línea.
+// Esa misma medición viaja a la pantalla (~12 por segundo) para dibujarte allá.
+let audioSucio = false, ondaEnviada = false;
+const aplicarAudio = () => { if (OndasAudio.iniciado) OndasAudio.actualizar(dev, { on, sonido, p: P }); audioSucio = false; };
+async function asegurarSonido() { const s = sonidos.find(x => x.id === sonido); if (s && OndasAudio.iniciado) await OndasAudio.cargar([s]); }
+let ultimaOnda = 0;
+setInterval(() => {
+  const r = on && OndasAudio.iniciado ? OndasAudio.analizar(dev) : null;
+  if (r) cuerda.recibir(r.b, r.n); else cuerda.callar();
+  if (performance.now() - ultimaOnda < (enLinea ? 160 : 80)) return; // en línea: ~6 por segundo; en red local: ~12
+  if (r || ondaEnviada) { pub(TOP && TOP.dev(dev, 'onda'), r ? [Math.round(r.n * 99), ...r.b.map(x => Math.round(x * 99))] : [0, 0, 0, 0, 0, 0, 0, 0, 0]); ondaEnviada = !!r; ultimaOnda = performance.now(); }
+}, 80);
+// el estado viaja a la pantalla ~15 veces por segundo, solo si cambió (y cada 2 s por si acaso)
+let ultimoEnvio = 0;
+setInterval(() => {
+  if (!sucio && performance.now() - ultimoEnvio < 2000) return;
+  if (enLinea && performance.now() - ultimoEnvio < 140) return; // en línea: hasta ~7 por segundo
+  const p = {}; for (const k in P) p[k] = Math.round(P[k] * 1000) / 1000;
+  if (pub(TOP && TOP.dev(dev, 'estado'), { on, sonido, modo: modo.id, p })) { sucio = false; ultimoEnvio = performance.now(); }
+}, 66);
+
+// ============================ SONIDOS Y MODOS ============================
+async function cargarSonidos() {
+  try { sonidos = await (await fetch('sonidos.json', { cache: 'no-store' })).json(); } catch { sonidos = []; }
+  const guardado = ls('ondas.sonido');
+  sonido = (sonidos.find(s => s.id === guardado) || sonidos[0] || {}).id || null;
+  $('#sonidos').innerHTML = sonidos.length ? sonidos.map(s => `<button data-id="${esc(s.id)}" aria-pressed="${s.id === sonido}">${esc(s.nombre)}</button>`).join('') : '<span style="color:var(--mut);font-size:13px">No hay sonidos en public/sonidos</span>';
+  for (const b of $('#sonidos').querySelectorAll('button')) b.onclick = () => { sonido = b.dataset.id; ls('ondas.sonido', sonido); marcar('#sonidos', b); sucio = true; asegurarSonido().then(aplicarAudio); };
+}
+$('#modos').innerHTML = MODOS.map(m => `<button data-id="${m.id}" aria-pressed="${m === modo}">${m.nombre}</button>`).join('');
+for (const b of $('#modos').querySelectorAll('button')) b.onclick = () => { modo = Ondas.modo(b.dataset.id); marcar('#modos', b); recalibrar(); armarMedidores(); };
+function marcar(sel, b) { for (const x of $(sel).querySelectorAll('button')) x.setAttribute('aria-pressed', x === b); }
+function armarMedidores() {
+  $('#ayuda').textContent = modo.ayuda;
+  $('#medidores').innerHTML = Ondas.parametrosDe(modo).map(k => `<div class="med" data-k="${k}"><span>${PARAMS[k].nombre}</span><output></output><div class="barra"><i></i></div></div>`).join('');
+}
+function pintarMedidores() {
+  for (const el of $('#medidores').children) {
+    const k = el.dataset.k, m = PARAMS[k], v = P[k];
+    el.querySelector('i').style.width = ((v - m.min) / (m.max - m.min)) * 100 + '%';
+    el.querySelector('output').textContent = m.fmt(v);
+  }
+}
+armarMedidores();
+
+// ============================ GIRO DEL TELÉFONO ============================
+// Todo es relativo: al entrar a un modo (o al recalibrar) se guarda la posición del teléfono y los valores actuales;
+// desde ahí, inclinar suma o resta. Cambiar de modo "congela" lo que ajustaste en el anterior.
+let pose = null, origen = null, movOn = false;
+function recalibrar() { origen = pose ? { ...pose } : null; base = { ...P }; arrastre = null; }
+function girar() {
+  if (!pose || !origen) return;
+  const d = { b: pose.b - origen.b, g: pose.g - origen.g, a: -Ondas.envolver(pose.a - origen.a) };
+  Ondas.aplicarGiro(P, base, modo, d); sucio = true; audioSucio = true;
+}
+async function pedirMovimiento() { // en iPhone el permiso se pide desde un toque
+  if (movOn) return;
+  const R = window.DeviceOrientationEvent;
+  if (R && typeof R.requestPermission === 'function') { if ((await R.requestPermission()) !== 'granted') throw new Error('Sin permiso de movimiento: arrastra el dedo sobre tu línea para transformar el sonido. (En iPhone, cierra Safari y vuelve a entrar para que lo pida otra vez.)'); }
+  addEventListener('deviceorientation', e => {
+    if (e.beta == null) return;
+    pose = { b: e.beta, g: e.gamma || 0, a: e.alpha || 0 };
+    if (!origen) recalibrar();
+    girar();
+  });
+  movOn = true;
+}
+// sin sensor (computador) o sin permiso: arrastrar sobre la línea hace lo mismo (horizontal = lados, vertical = adelante/atrás)
+let arrastre = null;
+$('#vista').addEventListener('pointerdown', e => { e.preventDefault(); arrastre = { x: e.clientX, y: e.clientY, base: { ...P }, mov: false }; });
+$('#vista').addEventListener('pointermove', e => {
+  if (!arrastre) return;
+  const dx = e.clientX - arrastre.x, dy = e.clientY - arrastre.y;
+  if (Math.hypot(dx, dy) > 8) arrastre.mov = true;
+  if (arrastre.mov && !(movOn && pose)) { Ondas.aplicarGiro(P, arrastre.base, modo, { b: -dy / 4, g: dx / 4, a: 0 }); sucio = true; audioSucio = true; }
+});
+const soltar = () => { if (arrastre && !arrastre.mov && on) { OndasAudio.pulso(dev); pub(TOP.dev(dev, 'pulso'), {}); toque = 1; } if (arrastre && arrastre.mov) base = { ...P }; arrastre = null; };
+$('#vista').addEventListener('pointerup', soltar); $('#vista').addEventListener('pointercancel', soltar);
+
+$('#power').onclick = async () => {
+  $('#err2').textContent = '';
+  if (!on) OndasAudio.init(); // el audio se crea en el mismo toque (iPhone lo exige), antes de pedir el permiso de movimiento
+  if (!on) { try { await pedirMovimiento(); } catch (e) { $('#err2').textContent = e.message; } }
+  on = !on; sucio = true;
+  $('#power').textContent = on ? 'APAGAR' : 'ENCENDER'; $('#power').classList.toggle('on', on); $('#power').setAttribute('aria-pressed', on);
+  if (on) { recalibrar(); $('#power').disabled = true; await asegurarSonido(); $('#power').disabled = false; }
+  aplicarAudio();
+};
+$('#recal').onclick = () => recalibrar();
+$('#reset').onclick = () => { P = Ondas.defaults(); recalibrar(); sucio = true; aplicarAudio(); };
+
+// ============================ TU LÍNEA ============================
+const cv = $('#mio'), c = cv.getContext('2d'); let VW = 0, VH = 0, toque = 0;
+function fit() { const d = devicePixelRatio || 1, r = $('#vista').getBoundingClientRect(); VW = r.width; VH = r.height; cv.width = VW * d; cv.height = VH * d; c.setTransform(d, 0, 0, d, 0, 0); c.fillStyle = '#050605'; c.fillRect(0, 0, VW, VH); }
+addEventListener('resize', fit);
+let cuadro = 0;
+(function loop(now) {
+  if (VW) {
+    const t = now / 1000;
+    c.fillStyle = 'rgba(5,6,5,.35)'; c.fillRect(0, 0, VW, VH);
+    for (let i = 1; i < 8; i++) { c.strokeStyle = 'rgba(61,220,132,.08)'; c.lineWidth = 1; const x = (i / 8) * VW; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, VH); c.stroke(); }
+    if (audioSucio) aplicarAudio(); // el giro llega ~60 veces por segundo; el sonido se ajusta una vez por cuadro
+    cuerda.paso();
+    if (!on && cuerda.nivel < 0.02) { c.strokeStyle = Ondas.color(0, 0.8); c.lineWidth = 2; c.beginPath(); c.moveTo(VW * 0.47, 0); c.lineTo(VW * 0.47, VH); c.moveTo(VW * 0.53, 0); c.lineTo(VW * 0.53, VH); c.stroke(); }
+    else cuerda.dibujar(c, VW * 0.47, -VH * 0.04, VH * 1.08, VW * 0.22 * (0.6 + cuerda.nivel), t, P.eco, 2 + cuerda.nivel * 2);
+    if (toque > 0.02) { c.fillStyle = Ondas.color(1, toque * 0.25); c.fillRect(0, 0, VW, VH); toque *= 0.85; }
+    if (++cuadro % 6 === 0) {
+      pintarMedidores();
+      $('#vistaTxt').textContent = !on ? 'Enciende tu sonido' : movOn && pose ? 'Gira el teléfono · toca para dar un golpe' : 'Arrastra para transformar · toca para dar un golpe';
+    }
+  }
+  requestAnimationFrame(loop);
+})(performance.now());
+
+// ============================ ENTRAR ============================
+async function wake() { try { await navigator.wakeLock?.request('screen'); } catch {} }
+const nombreAzar = () => { const A = ['Onda', 'Eco', 'Pulso', 'Hilo', 'Cuerda', 'Rayo', 'Bruma', 'Chispa', 'Marea', 'Viento'], B = ['Verde', 'Lunar', 'Grave', 'Aguda', 'Lenta', 'Veloz', 'Tibia', 'Clara', 'Roja', 'Suave'], r = Tacto.rand(2); return `${A[r.charCodeAt(0) % A.length]} ${B[r.charCodeAt(1) % B.length]}`; };
+function entrar() {
+  name = $('#name').value.trim().slice(0, 24) || nombreAzar(); sala = Tacto.clean($('#sala').value);
+  if (sala.length < 4) { $('#err').textContent = 'Escribe la sala que muestra la pantalla.'; return; }
+  ls('ondas.name', name); $('#yo').textContent = name;
+  $('#join').hidden = true; $('#app').hidden = false; fit(); wake();
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
+  cargarSonidos();
+  conectar().catch(e => { $('#st').textContent = 'No se pudo conectar'; $('#err2').textContent = e.message || String(e); });
+}
+$('#go').onclick = entrar;
+$('#yo').onclick = () => { const n = (prompt('Tu nombre', name) || '').trim().slice(0, 24); if (!n) return; name = n; ls('ondas.name', n); $('#yo').textContent = n; pub(TOP.dev(dev, 'status'), { online: true, name, app: 'ondas' }, { qos: 1, retain: true }); };
+if (Tacto.clean(Q.get('sala')).length >= 4) entrar(); // con el QR se entra directo
+</script>
+</body>
+</html>

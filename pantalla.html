@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ondas colectivas · pantalla</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  html, body { overflow: hidden; background: #050605; }
+  #lienzo { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .hud { position: fixed; z-index: 2; background: rgba(5,6,5,.78); border: 1px solid #22261f; border-radius: var(--r-l); backdrop-filter: blur(6px); transition: opacity 300ms; }
+  #top { left: 16px; top: 16px; padding: 8px 14px; display: flex; gap: 14px; align-items: center; border-radius: 999px; font-size: 13px; }
+  #top b { letter-spacing: .14em; font-weight: 700; } #top b span { color: #3ddc84; }
+  #cuenta { color: var(--mut); font-variant-numeric: tabular-nums; }
+  #join { right: 16px; bottom: 16px; padding: 12px; display: flex; gap: 12px; align-items: center; max-width: 430px; }
+  #qr { width: 168px; height: 168px; background: #fff; border-radius: var(--r-s); padding: 6px; flex: none; }
+  #join p { margin: 0 0 6px; font-weight: 700; font-size: 15px; }
+  #join code { display: block; color: #3ddc84; word-break: break-all; font: 12px var(--mono); user-select: all; }
+  #join small { color: var(--mut); display: block; margin-top: 8px; }
+  #panel { right: 16px; top: 16px; padding: 12px; width: 280px; display: grid; gap: 10px; }
+  #panel label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mut); }
+  #panel input[type=range] { flex: 1; }
+  #panel .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #panel .row button { font-size: 12px; padding: 4px 10px; }
+  #audioBtn.primary { background: #3ddc84; border-color: #3ddc84; color: #04140a; }
+  #keys { color: var(--mut); font-size: 11px; }
+  kbd { font: 10px var(--mono); padding: 1px 5px; border: 1px solid currentColor; border-radius: 4px; }
+  body.idle { cursor: none; } body.idle #top, body.idle #panel { opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="lienzo" aria-label="Las ondas de todas las personas, en vivo" role="img"></canvas>
+<div id="top" class="hud"><b>ONDAS <span>colectivas</span></b><span id="estado" class="dot" role="status" aria-live="polite">● sin conexión</span><span id="cuenta">0 personas</span><span>sala <code id="salaTxt">…</code></span><span id="brokerTxt" style="color:var(--mut);font-size:12px"></span></div>
+
+<div id="panel" class="hud" aria-label="Controles">
+  <h2 style="margin:0">Pantalla</h2>
+  <div class="row"><button id="audioBtn" aria-pressed="false">Activar sonido de la pantalla</button></div>
+  <div id="audioTxt" style="color:var(--mut);font-size:12px;margin-top:-4px">Cada persona suena en su teléfono. La pantalla solo muestra.</div>
+  <label>Volumen pantalla <input type="range" id="vol" min="0" max="1.4" step="0.05" value="0.9"></label>
+  <label>Estela <input type="range" id="estela" min="0" max="0.92" step="0.02" value="0.6"></label>
+  <label><input type="checkbox" id="nombres" checked> Mostrar nombres</label>
+  <label><input type="checkbox" id="fondoChk" checked> Líneas de fondo</label>
+  <div class="row"><button id="nueva" title="Crea otra sala (todos vuelven a escanear)">Nueva sala</button><button id="fs">Pantalla completa</button></div>
+  <div id="keys"><kbd>F</kbd> pantalla completa · <kbd>Q</kbd> QR · <kbd>B</kbd> este panel · <kbd>N</kbd> nombres</div>
+</div>
+
+<div id="join" class="hud">
+  <img id="qr" alt="QR para entrar desde el teléfono" hidden>
+  <div><p>Súmate con tu onda</p><div>Escanea o abre en el teléfono:</div><code id="url">…</code>
+  <small>Elige un sonido, enciéndelo y gira el teléfono para transformarlo.</small></div>
+</div>
+
+<script src="config.js"></script>
+<script src="tacto.js"></script>
+<script src="ondas-comun.js"></script>
+<script src="ondas-audio.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const sala = Tacto.sala(), TOP = Ondas.temas(sala);
+$('#salaTxt').textContent = sala;
+let client = null, seq = 0, sonidos = [];
+const devs = {}; // id -> { id, name, online, seq, on, sonido, modo, p, cuerda, salida }
+const pub = (t, o, op = {}) => client && client.connected && client.publish(t, JSON.stringify(o), op);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ============================ PERSONAS ============================
+function persona(id) { return (devs[id] ||= { id, name: id, online: false, seq: ++seq, on: false, sonido: null, modo: 'fusion', p: Ondas.defaults(), cuerda: new Ondas.Cuerda(id), salida: null, visto: performance.now() }); }
+// el teléfono repite su estado cada pocos segundos: si alguien pasa 25 s sin dar señales, se considera ido
+setInterval(() => {
+  for (const d of Object.values(devs)) if (d.online && performance.now() - d.visto > 25000) {
+    d.online = false; aplicar(d);
+    d.salida = setTimeout(() => { OndasAudio.quitar(d.id); delete devs[d.id]; }, 10000);
+  }
+}, 5000);
+function aplicar(d) { OndasAudio.actualizar(d.id, { on: d.on && d.online, sonido: d.sonido, p: d.p }); }
+function onMessage(topic, payload) {
+  const [, s, id, k] = topic.split('/'); if (s !== sala || !id || !k) return;
+  let m; try { m = JSON.parse(payload.toString()); } catch { return; }
+  if (devs[id]) devs[id].visto = performance.now();
+  if (k === 'status') {
+    if (m.app !== 'ondas') return;
+    const d = persona(id); d.name = String(m.name || id).slice(0, 24); d.online = !!m.online;
+    clearTimeout(d.salida);
+    if (!d.online) d.salida = setTimeout(() => { OndasAudio.quitar(id); delete devs[id]; }, 10000); // se fue: a los 10 s se libera su lugar
+    aplicar(d);
+  } else if (k === 'estado') {
+    const d = persona(id); d.online = true; clearTimeout(d.salida);
+    d.on = !!m.on; d.sonido = typeof m.sonido === 'string' ? m.sonido : d.sonido; d.modo = Ondas.modo(m.modo).id; d.p = Ondas.limpiar(m.p);
+    aplicar(d);
+  } else if (k === 'onda') { // cómo suena el loop en su teléfono: con eso se dibuja su línea aquí
+    const d = devs[id]; if (!d) return;
+    const n = Array.isArray(m) ? m[0] : m.n, b = Array.isArray(m) ? m.slice(1) : m.b || []; // formato compacto: [nivel, 8 bandas]
+    d.cuerda.recibir(b.map(x => x / 99), (n || 0) / 99); d.ondaT = performance.now();
+  } else if (k === 'pulso') {
+    const d = devs[id]; if (!d) return; if (sonidoPantalla) OndasAudio.pulso(id); d.toque = 1;
+  }
+}
+async function conectar() {
+  const est = (t, c) => { $('#estado').textContent = '● ' + t; $('#estado').className = 'dot ' + c; };
+  await Ondas.conectar({ clientId: 'pan-' + Tacto.rand(8) }, (cl, broker, respaldo) => {
+    client = cl;
+    $('#brokerTxt').textContent = Ondas.esLocal(broker) ? 'red local' : 'en línea · ' + Ondas.nombreBroker(broker) + (respaldo ? ' (respaldo)' : '');
+    $('#brokerTxt').title = respaldo ? 'El broker de config.js rechazó el usuario o la contraseña: se está usando el broker público de respaldo.' : broker;
+    cl.on('connect', () => { est('conectado', 'on'); cl.subscribe(TOP.todo, { qos: 0 }); });
+    cl.on('reconnect', () => est('reconectando', 'warn'));
+    cl.on('offline', () => est('sin conexión', 'warn'));
+    cl.on('error', e => est(e.message || 'error', 'warn'));
+    cl.on('message', onMessage);
+    updateJoin(broker);
+  });
+}
+// si un teléfono deja de mandar su onda (apagó, se bloqueó), su línea vuelve a quedar quieta
+setInterval(() => { for (const d of Object.values(devs)) if (!(performance.now() - (d.ondaT || 0) < 1200)) d.cuerda.callar(); }, 200); // en línea llegan menos seguido
+
+// ============================ SONIDO ============================
+// Cada persona suena en SU teléfono, siempre. La pantalla puede sumar además su propia mezcla de todos
+// (por los parlantes de la sala): parte apagada y se activa o desactiva con el botón.
+let sonidoPantalla = false;
+async function cargarSonidos() { try { sonidos = await (await fetch('sonidos.json', { cache: 'no-store' })).json(); } catch { sonidos = []; } }
+async function cambiarSonidoPantalla(on) {
+  sonidoPantalla = on;
+  const b = $('#audioBtn');
+  b.textContent = on ? 'Apagar sonido de la pantalla' : 'Activar sonido de la pantalla'; b.setAttribute('aria-pressed', on); b.classList.toggle('primary', on);
+  $('#audioTxt').textContent = on ? 'Suena en cada teléfono y también aquí (mezcla de todos).' : 'Cada persona suena en su teléfono. La pantalla solo muestra.';
+  if (on) { OndasAudio.reanudar(); await cargarSonidos(); await OndasAudio.cargar(sonidos); for (const d of Object.values(devs)) aplicar(d); }
+  else OndasAudio.suspender();
+}
+$('#audioBtn').onclick = () => cambiarSonidoPantalla(!sonidoPantalla);
+$('#vol').oninput = e => { OndasAudio.volumen = +e.target.value; };
+
+// ============================ QR, PANEL, TECLAS ============================
+async function updateJoin(broker) {
+  let base = null, local = false;
+  try { const i = await (await fetch('info', { cache: 'no-store' })).json(); if (i.baseUrl) { base = i.baseUrl + '/'; local = true; } } catch {}
+  if (!base) base = new URL('./', document.baseURI).href; // en Pages: la carpeta del sitio (index.html es el teléfono)
+  let u = base + '?sala=' + sala;
+  if (broker && !Ondas.esLocal(broker) && broker !== (window.TACTO_CONFIG || {}).broker) u += '&broker=' + encodeURIComponent(broker); // respaldo u otro: el teléfono debe usar el mismo
+  $('#url').textContent = u;
+  if (local) { $('#qr').src = 'qr.svg?u=' + encodeURIComponent(u); $('#qr').hidden = false; return; }
+  try { // en línea (GitHub Pages) no hay servidor: el QR se dibuja aquí mismo
+    if (!window.qrcode) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+    const q = window.qrcode(0, 'M'); q.addData(u); q.make(); $('#qr').src = q.createDataURL(6, 4); $('#qr').hidden = false;
+  } catch { $('#qr').hidden = true; }
+}
+$('#nueva').onclick = () => { if (confirm('Se crea otra sala y todos deben volver a escanear el QR. ¿Continuar?')) location.search = '?sala=' + Tacto.nuevaSala(); };
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+const toggleFs = () => { const p = fsEl() ? (document.exitFullscreen || document.webkitExitFullscreen).call(document) : (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement); if (p && p.catch) p.catch(() => {}); };
+$('#fs').onclick = toggleFs;
+addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT)$/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'f') toggleFs(); else if (k === 'q') $('#join').hidden = !$('#join').hidden; else if (k === 'b') $('#panel').hidden = !$('#panel').hidden; else if (k === 'n') $('#nombres').checked = !$('#nombres').checked;
+});
+let idleT; addEventListener('pointermove', () => { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => fsEl() && document.body.classList.add('idle'), 2500); });
+
+// ============================ DIBUJO ============================
+const cv = $('#lienzo'), c = cv.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+function fit() { dpr = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.fillStyle = '#050605'; c.fillRect(0, 0, W, H); }
+addEventListener('resize', fit); fit();
+
+(function loop(now) {
+  const t = now / 1000;
+  c.fillStyle = `rgba(5,6,5,${1 - +$('#estela').value})`; c.fillRect(0, 0, W, H); // estela: lo anterior se apaga de a poco
+  const gente = Object.values(devs).sort((a, b) => a.seq - b.seq), P = gente.length;
+  const L = Math.max(80, P * 3 + 20), paso = W / L, top = -H * 0.04, alto = H * 1.08;
+  // a cada persona le toca una columna, repartidas parejo; el resto son líneas de fondo
+  const usadas = new Set(), col = gente.map((d, j) => { let i = Math.round(((j + 0.5) / P) * L - 0.5); while (usadas.has(i)) i++; usadas.add(i); usadas.add(i + 1); return i; });
+  if ($('#fondoChk').checked) {
+    c.lineWidth = 1;
+    for (let i = 0; i < L; i++) {
+      if (usadas.has(i)) continue;
+      const x = (i + 0.5) * paso + Math.sin(t * 0.4 + i) * 0.6;
+      c.strokeStyle = 'rgba(61,220,132,.16)'; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
+    }
+  }
+  let sonando = 0;
+  gente.forEach((d, j) => {
+    const cu = d.cuerda; cu.paso();
+    const x0 = (col[j] + 0.5) * paso, amp = Math.min(W * 0.09, paso * 9) * (0.6 + cu.nivel), activa = d.on && d.online;
+    if (activa) sonando++;
+    if (!activa && cu.nivel < 0.02) { // en silencio: par de líneas rectas, verdes y visibles (esta persona está presente)
+      c.strokeStyle = Ondas.color(0, d.online ? 0.55 : 0.2); c.lineWidth = 1.2;
+      c.beginPath(); c.moveTo(x0, 0); c.lineTo(x0, H); c.moveTo(x0 + paso, 0); c.lineTo(x0 + paso, H); c.stroke();
+    } else cu.dibujar(c, x0, top, alto, amp, t, d.p.eco, 1.5 + cu.nivel * 1.5);
+    if (d.toque > 0.02) { c.fillStyle = Ondas.color(1, d.toque * 0.25); c.fillRect(x0 - paso, 0, paso * 3, H); d.toque *= 0.85; }
+    if ($('#nombres').checked) {
+      c.font = '600 11px system-ui'; c.textAlign = 'center'; c.fillStyle = activa ? Ondas.color(cu.nivel, 0.9) : 'rgba(154,147,174,.6)';
+      c.save(); c.translate(x0 + paso / 2, H - 14); c.rotate(-Math.PI / 2); c.textAlign = 'left'; c.fillText(d.name.slice(0, 16), 0, 4); c.restore();
+    }
+  });
+  $('#cuenta').textContent = `${P} ${P === 1 ? 'persona' : 'personas'} · ${sonando} sonando · ${sonidoPantalla ? '🔊 pantalla + teléfonos' : '🔈 en los teléfonos'}`;
+  if (!P) { c.fillStyle = 'rgba(154,147,174,.7)'; c.font = '600 18px system-ui'; c.textAlign = 'center'; c.fillText('Escanea el QR para sumar tu onda', W / 2, H * 0.5); }
+  requestAnimationFrame(loop);
+})(performance.now());
+
+cargarSonidos();
+conectar().catch(e => { const m = e.message || 'sin conexión'; $('#estado').textContent = '● ' + m; $('#estado').className = 'dot warn'; $('#url').textContent = m; });
+window.__ondas = { devs }; // para depurar desde la consola
+</script>
+</body>
+</html>
